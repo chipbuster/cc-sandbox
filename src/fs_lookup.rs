@@ -118,6 +118,42 @@ pub fn resolve_shadow_root(config: &mut Config, source: &Path) -> Result<PathBuf
     Ok(shadow_root)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unescape_plain_string() {
+        assert_eq!(unescape_mount_path("/home/user"), "/home/user");
+    }
+
+    #[test]
+    fn test_unescape_space() {
+        // \040 is the octal escape for space (ASCII 32)
+        assert_eq!(unescape_mount_path("/home/my\\040user"), "/home/my user");
+    }
+
+    #[test]
+    fn test_unescape_tab() {
+        // \011 is the octal escape for tab (ASCII 9)
+        assert_eq!(unescape_mount_path("/mnt/my\\011dir"), "/mnt/my\tdir");
+    }
+
+    #[test]
+    fn test_unescape_backslash() {
+        // \134 is the octal escape for backslash (ASCII 92)
+        assert_eq!(unescape_mount_path("/mnt/my\\134dir"), "/mnt/my\\dir");
+    }
+
+    #[test]
+    fn test_unescape_multiple() {
+        assert_eq!(
+            unescape_mount_path("/data/my\\040cool\\040project"),
+            "/data/my cool project"
+        );
+    }
+}
+
 fn prompt_shadow_root(mount_point: &Path) -> Result<PathBuf> {
     let default = mount_point.join(".cc-sandbox");
     eprint!(

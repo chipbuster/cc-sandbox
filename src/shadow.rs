@@ -33,12 +33,14 @@ impl std::fmt::Display for ChangeSummary {
 }
 
 /// Compute the shadow directory path for a given source.
+/// Returns `(shadow_path, suffix_used)` so the caller can record the suffix in
+/// the metadata without calling `Local::now()` a second time.
 pub fn compute_shadow_path(
     shadow_root: &Path,
     mount_point: &Path,
     source: &Path,
     name: Option<&str>,
-) -> Result<PathBuf> {
+) -> Result<(PathBuf, String)> {
     let relative = source.strip_prefix(mount_point).with_context(|| {
         format!(
             "Source {} is not under mount point {}",
@@ -61,13 +63,13 @@ pub fn compute_shadow_path(
 
     let suffix = match name {
         Some(n) => n.to_string(),
-        None => Local::now().format("%Y-%m-%d-%H%M").to_string(),
+        None => Local::now().to_rfc3339(),
     };
 
     let parent = relative.parent().unwrap_or(Path::new(""));
     let shadow_leaf = format!("{leaf}-{suffix}");
 
-    Ok(shadow_root.join(parent).join(shadow_leaf))
+    Ok((shadow_root.join(parent).join(shadow_leaf), suffix))
 }
 
 /// Create a reflink shadow copy of `source` at `shadow`.
@@ -75,7 +77,7 @@ pub fn compute_shadow_path(
 pub fn create_shadow(source: &Path, shadow: &Path) -> Result<()> {
     if shadow.exists() {
         bail!(
-            "Shadow path already exists: {}. Use a different --name or wait a minute for the timestamp to change.",
+            "Shadow path already exists: {}. Use a different --name or wait a moment for the timestamp to change.",
             shadow.display()
         );
     }
@@ -90,6 +92,8 @@ pub fn create_shadow(source: &Path, shadow: &Path) -> Result<()> {
     }
 
     // Create the shadow directory itself so cp can copy contents into it.
+    // The trailing /. on the source argument makes cp copy the *contents* of
+    // source into shadow, not source itself as a subdirectory.
     fs::create_dir(shadow)
         .with_context(|| format!("Failed to create shadow directory {}", shadow.display()))?;
 
@@ -97,7 +101,7 @@ pub fn create_shadow(source: &Path, shadow: &Path) -> Result<()> {
     let source_arg = format!("{}/.", source.display());
     let shadow_arg = shadow.display().to_string();
     let status = Command::new("cp")
-        .args(["--reflink=always", "-a", &source_arg, &shadow_arg])
+        .args(["--reflink=always", "--archive", &source_arg, &shadow_arg])
         .status()
         .context("Failed to execute cp")?;
 
@@ -190,6 +194,56 @@ pub fn cleanup_empty_parents(shadow: &Path, shadow_root: &Path) -> Result<()> {
         current = dir.parent();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shadow_root() -> PathBuf {
+        PathBuf::from("/data/.cc-sandbox")
+    }
+
+    fn mount() -> PathBuf {
+        PathBuf::from("/data")
+    }
+
+    #[test]
+    fn test_compute_shadow_path_basic() {
+        let source = PathBuf::from("/data/hey/ya/project");
+        let (path, suffix) =
+            compute_shadow_path(&shadow_root(), &mount(), &source, Some("mysuffix")).unwrap();
+        assert_eq!(path, PathBuf::from("/data/.cc-sandbox/hey/ya/project-mysuffix"));
+        assert_eq!(suffix, "mysuffix");
+    }
+
+    #[test]
+    fn test_compute_shadow_path_top_level_project() {
+        // Project lives directly under the mount point.
+        let source = PathBuf::from("/data/myproject");
+        let (path, _suffix) =
+            compute_shadow_path(&shadow_root(), &mount(), &source, Some("n")).unwrap();
+        assert_eq!(path, PathBuf::from("/data/.cc-sandbox/myproject-n"));
+    }
+
+    #[test]
+    fn test_compute_shadow_path_refuses_mount_root() {
+        // Shadowing the mount point itself should be an error.
+        let source = PathBuf::from("/data");
+        let result = compute_shadow_path(&shadow_root(), &mount(), &source, Some("x"));
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("Cannot shadow"),
+            "Error should mention 'Cannot shadow'"
+        );
+    }
+
+    #[test]
+    fn test_compute_shadow_path_source_not_under_mount() {
+        let source = PathBuf::from("/home/user/project");
+        let result = compute_shadow_path(&shadow_root(), &mount(), &source, Some("x"));
+        assert!(result.is_err());
+    }
 }
 
 /// Compute a change summary between a shadow and its source using rsync dry-run.

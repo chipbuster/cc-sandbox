@@ -33,7 +33,7 @@ pub fn run(path: PathBuf, name: Option<String>) -> Result<()> {
     let shadow_root = fs_lookup::resolve_shadow_root(&mut config, &source)?;
     let mount_point = fs_lookup::find_mount_point(&source)?;
 
-    let shadow_path =
+    let (shadow_path, suffix) =
         shadow::compute_shadow_path(&shadow_root, &mount_point, &source, name.as_deref())?;
 
     eprintln!("Creating shadow at {}", shadow_path.display());
@@ -42,8 +42,7 @@ pub fn run(path: PathBuf, name: Option<String>) -> Result<()> {
     let meta = shadow::ShadowMeta {
         source: source.clone(),
         created_at: chrono::Local::now(),
-        name_suffix: name
-            .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d-%H%M").to_string()),
+        name_suffix: suffix,
     };
     shadow::write_meta(&shadow_path, &meta)?;
 

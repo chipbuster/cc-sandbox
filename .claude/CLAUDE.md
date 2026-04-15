@@ -179,7 +179,7 @@ project at `<mount-point>/hey/ya/project` produces a shadow at
   the same project produce sibling directories
   (`project-2026-04-14-1530/` and `project-2026-04-14-1612/`), not nested
   ones.
-- Timestamp format: `YYYY-MM-DD-HHMM`, local time. Short enough to type,
+- Timestamp format: RFC3339/ISO8601. Short enough to type,
   long enough to disambiguate sandboxes started minutes apart.
 - `--name <NAME>` overrides the timestamp suffix entirely:
   `project-<NAME>`. Useful for "the auth refactor attempt" vs

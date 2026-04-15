@@ -8,7 +8,7 @@ use crate::devcontainer;
 use crate::name;
 use crate::shadow;
 
-pub fn run(shadow_name: String, yes: bool) -> Result<()> {
+pub fn run(shadow_name: String, auto_yes: bool) -> Result<()> {
     let config = config::load_or_create()?;
     let shadow_path = name::resolve_name(&shadow_name, &config)?;
     let meta = shadow::read_meta(&shadow_path)?;
@@ -25,7 +25,7 @@ pub fn run(shadow_name: String, yes: bool) -> Result<()> {
     let summary = shadow::change_summary(&shadow_path, &meta.source)?;
     eprintln!("Changes: {summary}");
 
-    if !yes {
+    if !auto_yes {
         eprint!(
             "Accept {} back to {}? [y/N]: ",
             summary,
